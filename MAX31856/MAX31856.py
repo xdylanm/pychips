@@ -78,18 +78,26 @@ class MAX31856:
 
         print("init complete")
 
-    @property
-    def temperature(self):
-        self._trigger_one_shot()
+    def start_conversion(self):
+        """Start a temperature conversion from the probe with no delay. Caller"""
+        """is responsible for allowing enough time before read out (170ms typ)"""
+        self._trigger_one_shot(0)
 
+    def read_temperature_reg(self):
         # read three bytes (high, mid, low)
         raw_bytes = self._read_reg(self.RegAddr.LTCBH,3)
         raw_val = (raw_bytes[0] << 16) + (raw_bytes[1] << 8) + raw_bytes[2]
         return raw_val / 4096.0
 
     @property
+    def temperature(self):
+        """Trigger a conversion and read the resulting temperature after a delay"""
+        self._trigger_one_shot(250)
+        return self.read_temperature_reg()
+
+    @property
     def ref_temperature(self):
-        self._trigger_one_shot()
+        self._trigger_one_shot(250)
 
         # read two bytes (high, low)
         raw_bytes = self._read_reg(self.RegAddr.CJTH,2)
@@ -137,7 +145,7 @@ class MAX31856:
             "OPEN" : bool(self.RegSR.OPEN & faults)}
 
     def clear_faults(self):
-        self._trigger_one_shot()    # update last stored T
+        self._trigger_one_shot(250)    # update last stored T
         data_CR0 = self._read_reg(self.RegAddr.CR0)[0]
         data_CR0 |= self.RegCR0.FAULTCLR
         print("Clear faults: CR0={:8b}".format(data_CR0 & 0xFF))
@@ -154,14 +162,15 @@ class MAX31856:
     def _convert_threshold_temperature_to_reg(self, val):
         return (int(abs(val)*16) & 0x7FFF) | (0x8000 if val < 0. else 0x0000)
 
-    def _trigger_one_shot(self):
+    def _trigger_one_shot(self, ms_delay):
         self._write_byte(self.RegAddr.CJTO, 0x00)
 
         data_CR0 = self._read_reg(self.RegAddr.CR0)[0]
         data_CR0 &= ~self.RegCR0.AUTOCONVERT
         data_CR0 |=  self.RegCR0.ONESHOT
         self._write_byte(self.RegAddr.CR0, data_CR0)
-        sleep(0.250)
+        if ms_delay > 0:
+            sleep(ms_delay/1000.)
 
     def _write_byte(self,addr,data):
         to_send = [(0x80 | addr) & 0xFF, data & 0xFF]

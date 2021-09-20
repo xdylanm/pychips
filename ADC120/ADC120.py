@@ -38,15 +38,18 @@ class ADC120:
         result = (((buf[-2] & 0x0F) << 8) + buf[-1])/4095.0
         return result
 
-    def read_all(self,acq_delay=0):
-        buf = [0x00 for i in range(16 + 2*acq_delay)]
-        for i in range(8):
-            buf[2*i] = 0b00111000 & (i << 3)
+    def readn(self, ch):
+        if any([i < 0 or i > 7 for i in ch]):
+            raise RuntimeError("ADC channel in list is out of range")
+            
+        buf = [0x00] * 2 * len(ch)
+        for i, chi in enumerate(ch):
+            buf[2*i] = 0b00111000 & (chi << 3)
 
         with self._device as spi:
             spi.xfer2(buf)
         
-        result = [(((buf[2*(i+acq_delay)] & 0x0F) << 8) + buf[2*(i+acq_delay)+1])/4095.0 for i in range(8)]
+        result = [(((buf[2*i] & 0x0F) << 8) + buf[2*i+1])/4095.0 for i in range(len(ch))]
         return result
 
     def send_raw(self, byte):
